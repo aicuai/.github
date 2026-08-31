@@ -1,0 +1,117 @@
+# 再利用ワークフロー: .aicu/surface.yml の存在と内容を検査する。
+#
+# 各リポジトリからはこう呼ぶ（3行）:
+#
+#   jobs:
+#     surface:
+#       uses: aicuai/.github/.github/workflows/surface-manifest.yml@main
+#
+# なぜ必要か:
+#   本番面（公開ホスト）を持つのに宣言が無いリポは、週次の開発週報から
+#   「評価不能」にしか見えない。逆に使われていないリソースを見つけても、
+#   オーナーと失効条件が書かれていないと畳んでよいか誰も判断できない。
+#   実測（2026-08-31）: Worker 23本・D1 13個・R2 6バケットが7日間ゼロ利用のまま、
+#   誰の物か分からず放置されていた。
+#
+# public repo の GitHub Actions は恒久無料。private repo でも数分で終わる軽い検査。
+name: surface manifest
+
+on:
+  workflow_call:
+    inputs:
+      required:
+        description: 'true にすると、本番面の有無に関わらず manifest を必須にする'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 本番面を持つか判定
+        id: detect
+        run: |
+          # リポジトリ自身の設定から「公開ホストを配信する気があるか」を見る。
+          # Cloudflare Pages のカスタムドメインはダッシュボード側にあり
+          # リポジトリからは分からないので、ここで取れないケースは required 入力で補う。
+          HOSTS=""
+          for f in wrangler.toml wrangler.jsonc wrangler.json; do
+            [ -f "$f" ] || continue
+            # コメント行は除く（「ここに書くな」と書かれたホストを拾わないため）
+            HOSTS="$HOSTS $(grep -vE '^\s*(#|//)' "$f" \
+              | grep -E 'pattern|route|custom_domain' \
+              | grep -oE '[a-z0-9.-]*(aicu\.(ai|jp)|nehan\.ai|scmf\.ai)' || true)"
+          done
+          for f in CNAME public/CNAME docs/CNAME; do
+            [ -f "$f" ] && HOSTS="$HOSTS $(tr -d ' \n' < "$f")"
+          done
+          LIST=$(echo $HOSTS | tr ' ' '\n' | grep -E '\.' | sort -u | paste -sd, -)
+          echo "hosts=$LIST" >> $GITHUB_OUTPUT
+          if [ -n "$LIST" ]; then echo "has_surface=true" >> $GITHUB_OUTPUT; else echo "has_surface=false" >> $GITHUB_OUTPUT; fi
+          echo "検出したホスト: ${LIST:-（なし）}"
+
+      - name: manifest の有無を確認
+        id: exists
+        run: |
+          if [ -f .aicu/surface.yml ]; then
+            echo "found=true" >> $GITHUB_OUTPUT
+          else
+            echo "found=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 本番面があるのに manifest が無い場合は落とす
+        if: steps.exists.outputs.found == 'false' && (steps.detect.outputs.has_surface == 'true' || inputs.required)
+        run: |
+          cat <<'MSG'
+          ✗ このリポジトリは公開ホストを配信しますが .aicu/surface.yml がありません。
+
+          本番面は「誰の物で、いつ畳むのか」が書かれていないと、使われなくなっても
+          消してよいか誰も判断できません。次の内容で作成してください。
+
+            # .aicu/surface.yml
+            entity: jp            # inc | jp（別法人・別戦略なので必ず選ぶ）
+            role: 何をする面か。誰向けか
+            owner: aki@aicu.ai    # 担当者が変わっても追える宛先
+            hosts:
+              - example.aicu.jp
+            deploy: cloudflare-workers
+            status: live
+            review:
+              next: 2027-03-31             # 次回棚卸し日
+              retire_when: 何が起きたら畳むか  # 「未定（2027-03 に再検討）」でも可
+
+          書き方: https://github.com/aicuai/.github/blob/main/docs/surface-manifest.md
+          MSG
+          echo "検出したホスト: ${{ steps.detect.outputs.hosts }}"
+          exit 1
+
+      - name: manifest が無く本番面も無い場合は素通り
+        if: steps.exists.outputs.found == 'false' && steps.detect.outputs.has_surface != 'true' && !inputs.required
+        run: |
+          echo "公開ホストを配信しないリポジトリのため検査をスキップします"
+          echo "（本番面の有無に関わらず必須にしたい場合は with.required を true にする）"
+
+      - uses: actions/setup-node@v4
+        if: steps.exists.outputs.found == 'true'
+        with:
+          node-version: '20'
+
+      # 検査スクリプトは curl でなく checkout で取る。
+      # raw.githubusercontent.com は public repo でしか読めず、将来 private 化すると黙って壊れる。
+      - name: 検査スクリプトを取得
+        if: steps.exists.outputs.found == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: aicuai/.github
+          ref: main
+          path: .aicu-ci
+
+      - name: 検査
+        if: steps.exists.outputs.found == 'true'
+        run: |
+          npx --yes js-yaml .aicu/surface.yml > /tmp/surface.json
+          node .aicu-ci/scripts/validate-surface.mjs /tmp/surface.json \
+            --wrangler-hosts "${{ steps.detect.outputs.hosts }}"

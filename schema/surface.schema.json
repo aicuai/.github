@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/aicuai/.github/blob/main/schema/surface.schema.json",
+  "title": "AICU surface manifest (.aicu/surface.yml)",
+  "description": "リポジトリが持つ本番面（公開ホスト）と、それを畳む条件の宣言。実態は Cloudflare が知っているので、ここに書くのは実態から導けないもの＝意図・所有・失効条件。",
+  "type": "object",
+  "required": ["entity", "role", "owner", "status", "review"],
+  "additionalProperties": false,
+  "properties": {
+    "entity": {
+      "description": "どちらの法人の資産か。AICU Inc. と AICU Japan K.K. は別法人・別戦略で、方針は揃えない",
+      "enum": ["inc", "jp"]
+    },
+    "role": { "type": "string", "minLength": 4, "description": "何をする面か。誰向けか。一行で" },
+    "owner": { "type": "string", "minLength": 3, "description": "事業上の連絡先。人が辞めても追える宛先にする" },
+    "hosts": {
+      "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9.-]+\\.(aicu\\.(ai|jp)|nehan\\.ai|scmf\\.ai)$|^aicu\\.(ai|jp)$" },
+      "description": "配信するホスト名。ホストを持たない（書籍・ライブラリ・実験）なら空配列"
+    },
+    "paths": {
+      "type": "array", "items": { "type": "string" },
+      "description": "同じホストを複数リポで共有する場合の担当パス。aicu.ai は実測で6リポが共有しており、これが無いとアクセス数を按分できない"
+    },
+    "deploy": {
+      "enum": ["cloudflare-workers", "cloudflare-pages", "vercel", "github-pages", "gas", "none", "other"]
+    },
+    "resources": {
+      "type": "object", "additionalProperties": false,
+      "description": "この面が専有する Cloudflare リソース。未使用リソースを見つけたとき「消してよいか」を即断するために要る",
+      "properties": {
+        "d1": { "type": "array", "items": { "type": "string" } },
+        "r2": { "type": "array", "items": { "type": "string" } },
+        "kv": { "type": "array", "items": { "type": "string" } },
+        "workers": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "status": {
+      "description": "planned=未公開 / live=稼働中 / maintenance=更新しないが稼働 / retiring=撤去作業中 / retired=撤去済み",
+      "enum": ["planned", "live", "maintenance", "retiring", "retired"]
+    },
+    "health": {
+      "type": "object", "additionalProperties": false,
+      "description": "死活監視の期待値（staff-aicu-jp の監視が読む）",
+      "properties": {
+        "contains": { "type": "string" },
+        "final_url": { "type": "string" },
+        "min_bytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "review": {
+      "type": "object", "required": ["next", "retire_when"], "additionalProperties": false,
+      "description": "圧縮の判断材料。トークン発行と同じ規律（失効条件と次回棚卸しを必ず書く）を面とリソースにも適用する",
+      "properties": {
+        "next": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "次回棚卸し日 YYYY-MM-DD" },
+        "retire_when": { "type": "string", "minLength": 4, "description": "何が起きたら畳むか。「未定」と書くのは可、空欄は不可" }
+      }
+    },
+    "note": { "type": "string" }
+  }
+}
