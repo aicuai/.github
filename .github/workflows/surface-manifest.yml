@@ -41,7 +41,11 @@ jobs:
           for f in wrangler.toml wrangler.jsonc wrangler.json; do
             [ -f "$f" ] || continue
             # コメント行は除く（「ここに書くな」と書かれたホストを拾わないため）
+            # zone_name は**ゾーン**であって配信ホストではない。
+            # `pattern = "award.aicu.ai"` の隣に `zone_name = "aicu.ai"` が並ぶため、
+            # 拾うと aicu.ai を配信していないリポにまで aicu.ai が付く。
             HOSTS="$HOSTS $(grep -vE '^\s*(#|//)' "$f" \
+              | grep -vE 'zone_name' \
               | grep -E 'pattern|route|custom_domain' \
               | grep -oE '[a-z0-9.-]*(aicu\.(ai|jp)|nehan\.ai|scmf\.ai)' || true)"
           done
