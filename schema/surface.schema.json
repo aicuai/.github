@@ -19,7 +19,7 @@
     },
     "paths": {
       "type": "array", "items": { "type": "string" },
-      "description": "同じホストを複数リポで共有する場合の担当パス。aicu.ai は実測で6リポが共有しており、これが無いとアクセス数を按分できない"
+      "description": "同じホストを複数リポで共有する場合の担当パス。aicu.ai などは複数リポで共有されており、これが無いとアクセス数を按分できない"
     },
     "deploy": {
       "enum": ["cloudflare-workers", "cloudflare-pages", "vercel", "github-pages", "gas", "none", "other"]

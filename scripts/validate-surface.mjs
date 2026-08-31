@@ -80,7 +80,7 @@ if (!r || typeof r !== 'object') {
 }
 
 // 同一ホストを複数リポが共有する場合、paths が無いとアクセス数を按分できない。
-// 実測で aicu.ai は6リポ、api.aicu.ai と aicu.jp は2リポずつが共有している。
+// aicu.ai / api.aicu.ai / aicu.jp は複数リポで共有されている。
 const SHARED = new Set(['aicu.ai', 'aicu.jp', 'api.aicu.ai']);
 if (hosts.some((h) => SHARED.has(h)) && !(Array.isArray(m.paths) && m.paths.length)) {
   warn('共有ホスト（aicu.ai / aicu.jp / api.aicu.ai）を宣言しているのに paths がありません。担当パスを書かないとアクセス数を他リポと按分できません');
