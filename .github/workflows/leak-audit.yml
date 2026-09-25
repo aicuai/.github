@@ -1,0 +1,86 @@
+# Reusable workflow: audits a repository for content that should not be public.
+#
+#   jobs:
+#     leak:
+#       uses: aicuai/.github/.github/workflows/leak-audit.yml@main
+#       secrets: inherit
+#
+# Secrets it reads (both optional):
+#   LEAK_DENYLIST  internal names that must never appear (one per line). Kept as a secret on purpose.
+#   AICU_API_KEY   enables the LLM review through api.aicu.ai.
+# Pull requests from forks get neither, so they run the secret-pattern layer only.
+#
+# Pull requests audit the changed files; pushes and manual runs audit every tracked file.
+name: leak audit
+
+on:
+  workflow_call:
+    inputs:
+      llm:
+        description: 'Run the LLM review when AICU_API_KEY is available'
+        type: boolean
+        default: true
+      fail_on_llm:
+        description: 'Fail the job on high-severity LLM findings (otherwise they are warnings)'
+        type: boolean
+        default: false
+      model:
+        description: 'Model used for the LLM review'
+        type: string
+        default: gpt-4o-mini
+      only_public:
+        description: 'Skip the audit while the repository is private'
+        type: boolean
+        default: true
+      tools_ref:
+        description: 'Ref of aicuai/.github to take the audit script from'
+        type: string
+        default: main
+    secrets:
+      LEAK_DENYLIST:
+        required: false
+      AICU_API_KEY:
+        required: false
+
+jobs:
+  audit:
+    if: ${{ !inputs.only_public || !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch the audit script
+        uses: actions/checkout@v4
+        with:
+          repository: aicuai/.github
+          ref: ${{ inputs.tools_ref }}
+          path: .aicu-ci
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: List files to audit
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ -n "$BASE" ]; then
+            git diff --name-only --diff-filter=ACMR "$BASE...$HEAD" > /tmp/leak-files.txt
+          else
+            git ls-files > /tmp/leak-files.txt
+          fi
+          echo "$(wc -l < /tmp/leak-files.txt) file(s) to audit"
+
+      - name: Audit
+        env:
+          LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}
+          AICU_API_KEY: ${{ inputs.llm && secrets.AICU_API_KEY || '' }}
+          LEAK_AUDIT_MODEL: ${{ inputs.model }}
+        run: |
+          node .aicu-ci/scripts/leak-audit.mjs --files-from /tmp/leak-files.txt \
+            ${{ inputs.llm && '--llm' || '' }} ${{ inputs.fail_on_llm && '--fail-on-llm' || '' }}

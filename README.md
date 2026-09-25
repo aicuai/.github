@@ -1,37 +1,34 @@
-# aicuai/.github — org 共通の規約と再利用ワークフロー
+# aicuai/.github — shared conventions and reusable workflows
 
-AICU の全リポジトリが共有する仕組みを置く場所。
+Conventions and CI checks shared by every repository in the AICU organization.
+Both workflows are generic and can be called from any GitHub repository.
 
-## surface manifest（`.aicu/surface.yml`）
-
-リポジトリが持つ**本番面**と、それを**畳む条件**の宣言。
-
-- 仕様と書き方: [docs/surface-manifest.md](docs/surface-manifest.md)
-- スキーマ: [schema/surface.schema.json](schema/surface.schema.json)
-- 検査（再利用ワークフロー）: [.github/workflows/surface-manifest.yml](.github/workflows/surface-manifest.yml)
-
-各リポジトリからはこう呼ぶ。
+| Workflow | What it checks | Guide |
+|---|---|---|
+| [surface-manifest.yml](.github/workflows/surface-manifest.yml) | A repository that serves a public host declares its owner and when it should be retired | [docs/surface-manifest.md](docs/surface-manifest.md) |
+| [leak-audit.yml](.github/workflows/leak-audit.yml) | Nothing that should stay internal is about to be published | [docs/leak-audit.md](docs/leak-audit.md) |
 
 ```yaml
-# .github/workflows/surface.yml
-name: surface
+# .github/workflows/org-checks.yml
+name: org checks
 on: [push, pull_request]
 jobs:
   surface:
     uses: aicuai/.github/.github/workflows/surface-manifest.yml@main
+  leak:
+    uses: aicuai/.github/.github/workflows/leak-audit.yml@main
+    secrets: inherit
 ```
 
-### なぜ宣言させるのか
+## Why
 
-**どこで動いているかは Cloudflare が知っている。生きているべきかは人しか知らない。**
+**The hosting provider knows where something runs. Only people know whether it should still be running.**
 
-org 全体を実測したところ、7日間まったく使われていない Worker・D1・R2 が相当数あり、
-どれもオーナーと失効条件がどこにも書かれておらず、消してよいか誰も判断できなかった。
-`review.next`（次回棚卸し）と `review.retire_when`（何が起きたら畳むか）が
-必須なのはこのため。AICU が既にトークン発行で採用している規律を、面とリソースに広げたもの。
+Automatic discovery answers "is it up?". It cannot answer "who owns this, and when may it be removed?".
+Unused services and databases pile up precisely because nobody wrote that down.
+The surface manifest makes those two answers mandatory, the same way we already require an
+expiry condition and a review date for every API token we issue.
 
-## 関連
-
-- 週次「AIDX Lab 開発週報」— 宣言と実態のズレを毎週出す: [staff-aicu-jp#272](https://github.com/aicuai/staff-aicu-jp/issues/272)
-- ルート/サービス登録申請（人間の承認フロー）: [top-aicuai の Issue テンプレート](https://github.com/aicuai/top-aicuai/issues/new?template=route-registration.yml)
-- アプリ台帳（役割・意図の宣言）: [top-aicuai/public/registry.json](https://github.com/aicuai/top-aicuai/blob/main/public/registry.json)
+**Being public is a feature, as long as nothing internal leaks.** This repository is public so that any
+repository can call these workflows for free. The leak audit is how we keep that safe, here and in
+every other public repository.

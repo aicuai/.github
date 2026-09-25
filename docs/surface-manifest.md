@@ -1,71 +1,69 @@
-# surface manifest — `.aicu/surface.yml`
+# Surface manifest — `.aicu/surface.yml`
 
-リポジトリが持つ**本番面（公開ホスト）**と、それを**畳む条件**の宣言。
+A declaration of the **production surfaces** (public hosts) a repository serves, and the
+**conditions for retiring them**.
 
-## なぜ要るか
+## Why it exists
 
-実態は Cloudflare が全部知っている。**ここに書くのは実態から導けないものだけ** —
-意図・所有・失効条件。
+Where something runs is already known: the hosting provider's API lists every route, custom domain,
+database, and bucket. **This file records only what cannot be derived from that** — intent, ownership,
+and the retirement condition.
 
-2026-08-31 に org 全体を実測してこうなった。
+When we compared repositories against what was actually deployed, two things stood out:
 
-- GitHub の全162リポの設定ファイル（wrangler / CNAME / package.json）を走査して、
-  配信ホストが取れたのは **21リポだけ**。Cloudflare Pages のカスタムドメインは
-  ダッシュボードで設定され、リポジトリには一切書かれない
-- Cloudflare 側（Pages の `domains[]` と Worker の routes）を見ると
-  **35ホスト中33が repo に結びついた**。つまり「どこで動いているか」は自動で分かる
-- 一方で **7日間まったく使われていない Worker・D1・R2 が相当数**残っていた。
-  消せるかどうかは誰にも分からなかった。**オーナーと失効条件がどこにも書かれていない**から
+- Repository config alone misses many hosts. Custom domains on Cloudflare Pages, for example, are set in
+  the dashboard and never appear in the repository. The provider's API, on the other hand, maps nearly
+  every host back to a repository. **"Where does it run?" can be discovered automatically.**
+- A noticeable share of Workers, databases, and buckets had not been used for a week or more, and nobody
+  could say whether they were safe to delete — **no owner and no retirement condition had been written down.**
 
-自動探索で分かるのは「動いているか」まで。**「生きているべきか」は人が宣言するしかない。**
-それがこのファイルの唯一の仕事である。
+Discovery tells you whether something is running. **Whether it should still be running has to be declared
+by a person.** That is this file's only job.
 
-同じ規律を AICU は既にトークンで採用している —
-「発行 Issue と ledger には失効条件（いつ・何が起きたら消すか）と次回棚卸し時期を必ず書く。
-これが無いと管理期限が判断できない」。それを**面とリソース**に広げたものがこれ。
+We already apply this rule to API tokens: every issued token records when and why it should be revoked,
+and when it is next reviewed. The surface manifest extends that rule to services and resources.
 
-## 書き方
+## Format
 
 ```yaml
 # .aicu/surface.yml
-entity: jp                       # inc | jp。AICU Inc. と AICU Japan K.K. は別法人・別戦略
-role: AICU Contest の応募・審査・結果発表
-owner: aki@aicu.ai               # 担当者が変わっても追える宛先
+entity: inc                      # inc | jp — AICU Inc. and AICU Japan K.K. are separate companies
+role: Contest entry, judging, and results
+owner: team@example.com          # an address that survives people changing roles
 hosts:
-  - c.aicu.jp                    # 本番面が無いなら [] （書籍・ライブラリ・実験）
-paths:                           # 同じホストを複数リポで共有するときだけ必要
-  - aicu.jp/study
+  - contest.example.com          # [] if there is no production surface (books, libraries, experiments)
+paths:                           # only needed when several repositories share one host
+  - example.com/study
 deploy: cloudflare-workers       # cloudflare-pages | vercel | github-pages | gas | none | other
-resources:                       # この面が専有する Cloudflare リソース
+resources:                       # Cloudflare resources used only by this surface
   d1: [contest-db]
   r2: []
 status: live                     # planned | live | maintenance | retiring | retired
-health:                          # 死活監視の期待値（staff-aicu-jp の監視が読む）
-  contains: "応募受付中"
-review:                          # ← ここが本題
-  next: 2027-03-31               # 次回棚卸し日
-  retire_when: 2026年度コンテスト終了かつ応募データ移行完了後
+health:                          # expectations for uptime monitoring
+  contains: "Entries open"
+review:                          # ← the point of the file
+  next: 2027-03-31               # next review date
+  retire_when: After the 2026 contest closes and entries are archived
 ```
 
-必須は `entity` `role` `owner` `status` `review`。
+Required: `entity`, `role`, `owner`, `status`, `review`.
+A JSON Schema for editor completion is in [schema/surface.schema.json](../schema/surface.schema.json).
 
-### `review` を空欄にしない
+### Never leave `review` blank
 
-`retire_when` が決まっていないなら **「未定（2027-03 に再検討）」と書く**。
-空欄は不可。「決まっていない」と「誰も考えていない」を区別できるようにするため。
+If there is no retirement condition yet, write **"Undecided (revisit 2027-03)"**.
+Blank is rejected, so that "not decided yet" can be told apart from "nobody thought about it".
 
-### `paths` は共有ホストで必要
+### `paths` on shared hosts
 
-`aicu.ai` は複数リポが共有している（`api.aicu.ai` や `aicu.jp` も同様）。
-`paths` が無いと週次のアクセス数を按分できず、同じ PV を何度も数えることになる。
+When several repositories serve one host, each should list the paths it owns.
+Without them, traffic cannot be attributed and the same page views get counted more than once.
 
-### `hosts` はホスト名だけ
+### `hosts` are bare hostnames
 
-`https://` やパスを含めない。パスは `paths` に書く。
+No `https://`, no path. Paths go in `paths`.
 
-## CI で検査する
-
-各リポジトリに次を置く。
+## Checking it in CI
 
 ```yaml
 # .github/workflows/surface.yml
@@ -74,25 +72,28 @@ on: [push, pull_request]
 jobs:
   surface:
     uses: aicuai/.github/.github/workflows/surface-manifest.yml@main
+    # with:
+    #   required: true                    # require the manifest even if no host is detected
+    #   shared_hosts: example.com,api.example.com
 ```
 
-- リポジトリが**公開ホストを配信すると宣言している**（wrangler の routes / custom_domain、
-  または CNAME がある）のに `.aicu/surface.yml` が無ければ**落ちる**
-- 公開面が無いリポジトリは素通りする。面の有無に関わらず必須にしたい場合は
-  `with: { required: true }`
-- manifest があれば内容を検査する。wrangler が配信すると言っているホストが
-  `hosts` に無ければ警告する（**ルートを変えて宣言を直し忘れた**ケース）
+- If the repository **says it serves a public host** (wrangler `routes` / `custom_domain`, or a `CNAME`
+  file) and has no `.aicu/surface.yml`, the job **fails**.
+- Repositories without a public host pass. Use `required: true` to require the manifest anyway.
+- If the manifest exists, its content is validated. A host served by wrangler but missing from `hosts`
+  produces a warning — the usual case of changing a route and forgetting the declaration.
+- If `shared_hosts` is given, declaring one of those hosts without `paths` produces a warning.
 
-Cloudflare Pages のカスタムドメインはリポジトリから見えないため、CI では検出できない。
-Pages のリポジトリは `required: true` を付けるか、新規作成時にテンプレートから入れる。
+Cloudflare Pages custom domains are invisible from the repository, so CI cannot detect them.
+Pages repositories should set `required: true`, or get the manifest from a project template.
 
-## 週次「AIDX Lab 開発週報」との関係
+## What the declaration makes possible
 
-`staff.aicu.jp/repos` が毎週月曜に、この manifest と Cloudflare の実態を突き合わせる。
+Comparing the manifest with what is actually deployed, every week, surfaces four lists:
 
-- **宣言はあるが動いていない** … `status: live` なのに7日間アクセスもリクエストも無い
-- **動いているが宣言が無い** … Cloudflare にホストがあるのに manifest が無い
-- **棚卸し期限切れ** … `review.next` を過ぎている
-- **畳める** … 使われておらず、`retire_when` の条件を満たしている
+- **Declared but idle** — `status: live`, yet no traffic or requests for seven days
+- **Running but undeclared** — the provider serves a host that no manifest mentions
+- **Review overdue** — `review.next` is in the past
+- **Ready to retire** — unused, and `retire_when` has been met
 
-宣言と実態のどちらか片方だけでは、この4つはどれも出せない。
+None of the four can be produced from the declaration alone, or from the deployment alone.
