@@ -101,7 +101,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.exists.outputs.found == 'true'
         with:
-          node-version: '20'
+          node-version: '22'
 
       # 検査スクリプトは curl でなく checkout で取る。
       # raw.githubusercontent.com は public repo でしか読めず、将来 private 化すると黙って壊れる。
