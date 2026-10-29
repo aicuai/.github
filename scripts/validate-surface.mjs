@@ -51,7 +51,7 @@ if (typeof m.role !== 'string' || m.role.trim().length < 4) {
   fail('role: one line on what this surface does and who it is for');
 }
 if (typeof m.owner !== 'string' || m.owner.trim().length < 3) {
-  fail('owner: a business contact that still works when people change roles (a team address is best)');
+  fail('owner: a contact that still works when people change roles — an X/GitHub handle like "@AICUai", a team alias, or a URL. Not a personal email');
 }
 if (!STATUSES.includes(m.status)) {
   fail(`status must be one of ${STATUSES.join(' | ')}`);

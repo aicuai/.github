@@ -28,7 +28,7 @@
     "owner": {
       "type": "string",
       "minLength": 3,
-      "description": "Business contact. Use an address that survives people changing roles."
+      "description": "Contact that outlives any one person: an X or GitHub handle (\"@AICUai\"), a team alias, or a URL. Not a personal email address."
     },
     "hosts": {
       "type": "array",

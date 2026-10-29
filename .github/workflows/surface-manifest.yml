@@ -84,7 +84,7 @@ jobs:
             # .aicu/surface.yml
             entity: inc           # inc | jp (separate companies; pick one)
             role: What this surface does, and for whom
-            owner: team@example.com
+            owner: "@AICUai"    # a handle or team alias, not a personal email
             hosts:
               - app.example.com
             deploy: cloudflare-workers

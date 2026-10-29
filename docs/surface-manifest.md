@@ -29,7 +29,7 @@ and when it is next reviewed. The surface manifest extends that rule to services
 # .aicu/surface.yml
 entity: inc                      # inc | jp — AICU Inc. and AICU Japan K.K. are separate companies
 role: Contest entry, judging, and results
-owner: team@example.com          # an address that survives people changing roles
+owner: "@AICUai"                # a handle or team alias that outlives any one person — not a personal email
 hosts:
   - contest.example.com          # [] if there is no production surface (books, libraries, experiments)
 paths:                           # only needed when several repositories share one host
@@ -47,6 +47,12 @@ review:                          # ← the point of the file
 ```
 
 Required: `entity`, `role`, `owner`, `status`, `review`.
+
+### `owner` is a handle, not a person
+
+Any contact that still works after people change roles: an X or GitHub handle (`"@AICUai"`),
+a team alias, or a URL. Avoid personal email addresses — they stop working when the person leaves,
+and in a public repository they are harvested. Quote a handle that starts with `@`; YAML reserves it.
 A JSON Schema for editor completion is in [schema/surface.schema.json](../schema/surface.schema.json).
 
 ### Never leave `review` blank
