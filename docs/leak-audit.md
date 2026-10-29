@@ -29,7 +29,10 @@ A list of your private repository names is itself internal information. Committi
 repository would leak exactly what it is meant to protect. So the list is passed at run time from an
 organization secret, and a match is reported as "denylist entry #3" — the term itself is never printed.
 
-`LEAK_DENYLIST` holds one term per line (or comma-separated). Matching is case-insensitive substring.
+`LEAK_DENYLIST` holds one term per line (or comma-separated). Matching is case-insensitive and on whole
+names: `nimbus` matches `org/nimbus/issues` but not `nimbusflow`. Leave out names that are also common
+words (a repository called `harbor` would fire on every harbor view), and terms shorter than three
+characters are ignored.
 
 ### Why an LLM
 

@@ -62,6 +62,11 @@ const readText = (f) => {
 
 const denylist = (process.env.LEAK_DENYLIST || '')
   .split(/[\n,]/).map((s) => s.trim()).filter((s) => s.length >= 3);
+// Match whole names only: "nimbus" fires on "org/nimbus/issues" but not inside "nimbusflow".
+// A letter or digit on either side means the term is part of a longer word.
+// A name that is also a common word ("harbor") still fires on that word; leave such names out.
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const denyRes = denylist.map((t) => new RegExp(`(?<![A-Za-z0-9])${escapeRe(t)}(?![A-Za-z0-9])`, 'i'));
 
 const findings = []; // { level: 'error'|'warning', file, line, title, message }
 const add = (f) => findings.push(f);
@@ -78,9 +83,8 @@ for (const file of files) {
     for (const [name, re] of SECRET_RULES) {
       if (re.test(line)) add({ level: 'error', file, line: i + 1, title: 'Secret', message: `Looks like a ${name}. Remove it and rotate the credential; deleting it in a later commit does not remove it from history.` });
     }
-    const lower = line.toLowerCase();
-    denylist.forEach((term, idx) => {
-      if (lower.includes(term.toLowerCase())) add({ level: 'error', file, line: i + 1, title: 'Internal name', message: `Matches denylist entry #${idx + 1}. Internal names should not appear in a public repository.` });
+    denyRes.forEach((re, idx) => {
+      if (re.test(line)) add({ level: 'error', file, line: i + 1, title: 'Internal name', message: `Matches denylist entry #${idx + 1}. Internal names should not appear in a public repository.` });
     });
   });
 }
