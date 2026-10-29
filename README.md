@@ -79,10 +79,10 @@ change would be announced in the pull request and this README.
 ## Layout
 
 ```
-.github/workflows/   the reusable workflows, plus leak-audit-self.yml which audits this repository
+.github/workflows/   the reusable workflows, plus self-test.yml which runs both on this repository
 docs/                one guide per workflow
 schema/              JSON Schema for .aicu/surface.yml
-scripts/             the checks themselves, runnable locally with Node 20+
+scripts/             the checks themselves, runnable locally with Node 22+
 ```
 
 ## Contact

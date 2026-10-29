@@ -1,0 +1,10 @@
+# This repository serves no host; the manifest is here so its own CI exercises surface-manifest.yml.
+entity: inc
+role: Reusable GitHub Actions workflows and conventions for AICU repositories
+owner: "@AICUai"
+hosts: []
+deploy: none
+status: live
+review:
+  next: 2027-04-30
+  retire_when: When no repository calls these workflows any more
