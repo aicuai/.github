@@ -1,0 +1,15 @@
+# Runs the leak audit on this repository, using the script from the commit under test.
+name: leak audit (self)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  leak:
+    uses: ./.github/workflows/leak-audit.yml
+    with:
+      tools_ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    secrets: inherit

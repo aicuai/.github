@@ -1,20 +1,21 @@
 #!/usr/bin/env node
-// .aicu/surface.yml の検査。
+// Validates .aicu/surface.yml.
 //
-// なぜ手書きの検査か:
-//   JSON Schema ライブラリを入れると「required が足りない」のような機械的な文言しか出ず、
-//   直し方が分からないまま CI が赤いだけになる。ここは**何をどう直すか**を日本語で返す。
-//   スキーマ本体は schema/surface.schema.json に置いてエディタ補完用に残す。
+// Why hand-written instead of a JSON Schema library:
+//   Schema validators report things like "must have required property". That turns CI red
+//   without telling anyone how to fix it. This script says what to change, in plain words.
+//   The schema itself lives in schema/surface.schema.json for editor completion.
 //
-// 使い方: node validate-surface.mjs <surface.json> [--wrangler-hosts a,b]
-//   YAML → JSON の変換は呼び出し側（workflow）が js-yaml で行う。
+// Usage: node validate-surface.mjs <surface.json> [--wrangler-hosts a,b] [--shared-hosts x,y]
+//   The caller (the workflow) converts YAML to JSON with js-yaml.
 
 import { readFileSync } from 'node:fs';
 
 const ENTITIES = ['inc', 'jp'];
 const STATUSES = ['planned', 'live', 'maintenance', 'retiring', 'retired'];
 const DEPLOYS = ['cloudflare-workers', 'cloudflare-pages', 'vercel', 'github-pages', 'gas', 'none', 'other'];
-const HOST_RE = /^(?:[a-z0-9-]+\.)*(?:aicu\.(?:ai|jp)|nehan\.ai|scmf\.ai)$/;
+// A bare hostname: no scheme, no path, no port.
+const HOST_RE = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const errors = [];
@@ -22,85 +23,88 @@ const warns = [];
 const fail = (m) => errors.push(m);
 const warn = (m) => warns.push(m);
 
+const argList = (name) => {
+  const i = process.argv.indexOf(name);
+  return i > 0 ? (process.argv[i + 1] || '').split(',').map((s) => s.trim()).filter(Boolean) : [];
+};
+
 const file = process.argv[2];
-const wranglerArg = process.argv.indexOf('--wrangler-hosts');
-const wranglerHosts = wranglerArg > 0 ? (process.argv[wranglerArg + 1] || '').split(',').map((s) => s.trim()).filter(Boolean) : [];
+const wranglerHosts = argList('--wrangler-hosts');
+const sharedHosts = new Set(argList('--shared-hosts'));
 
 let m;
 try {
   m = JSON.parse(readFileSync(file, 'utf8'));
 } catch (e) {
-  console.error(`✗ .aicu/surface.yml を読めませんでした: ${e.message}`);
+  console.error(`✗ Could not read .aicu/surface.yml: ${e.message}`);
   process.exit(1);
 }
 if (!m || typeof m !== 'object' || Array.isArray(m)) {
-  console.error('✗ .aicu/surface.yml の中身がマッピングではありません');
+  console.error('✗ .aicu/surface.yml must be a mapping');
   process.exit(1);
 }
 
 if (!ENTITIES.includes(m.entity)) {
-  fail(`entity は ${ENTITIES.join(' | ')} のどれか。AICU Inc.(inc) と AICU Japan K.K.(jp) は別法人・別戦略なので必ず選ぶ`);
+  fail(`entity must be one of ${ENTITIES.join(' | ')}. AICU Inc. (inc) and AICU Japan K.K. (jp) are separate companies, so pick one`);
 }
 if (typeof m.role !== 'string' || m.role.trim().length < 4) {
-  fail('role: 何をする面か・誰向けかを一行で書く');
+  fail('role: one line on what this surface does and who it is for');
 }
 if (typeof m.owner !== 'string' || m.owner.trim().length < 3) {
-  fail('owner: 事業上の連絡先。担当者が変わっても追える宛先にする（例 aki@aicu.ai）');
+  fail('owner: a business contact that still works when people change roles (a team address is best)');
 }
 if (!STATUSES.includes(m.status)) {
-  fail(`status は ${STATUSES.join(' | ')} のどれか`);
+  fail(`status must be one of ${STATUSES.join(' | ')}`);
 }
 if (m.deploy !== undefined && !DEPLOYS.includes(m.deploy)) {
-  fail(`deploy は ${DEPLOYS.join(' | ')} のどれか`);
+  fail(`deploy must be one of ${DEPLOYS.join(' | ')}`);
 }
 
 const hosts = m.hosts ?? [];
-if (!Array.isArray(hosts)) fail('hosts は配列。本番面が無いなら [] と書く');
+if (!Array.isArray(hosts)) fail('hosts must be a list. Write [] if there is no production surface');
 else {
   for (const h of hosts) {
-    if (typeof h !== 'string' || !HOST_RE.test(h)) fail(`hosts の "${h}" がホスト名として不正（パスや https:// を含めない）`);
+    if (typeof h !== 'string' || !HOST_RE.test(h)) fail(`hosts: "${h}" is not a bare hostname (no https://, no path)`);
   }
 }
 
-// review は圧縮のための欄。ここが空だと「使われていないリソースを消してよいか」を
-// 誰も判断できない。トークン発行で既に確立している規律（失効条件＋棚卸し時期）と同じ。
+// review is what makes retirement possible. Without it, nobody can tell whether an unused
+// resource may be deleted. Same discipline as token issuance: expiry condition + next review.
 const r = m.review;
-// YAML の無クォートな 2027-03-31 は**日付型**として読まれ、JSON では
-// "2027-03-31T00:00:00.000Z" になる。文字列で書いた場合と両方を受ける。
+// Unquoted 2027-03-31 in YAML is read as a date and becomes "2027-03-31T00:00:00.000Z" in JSON.
+// Accept both that and a plain string.
 const asDate = (v) => (typeof v === 'string' ? v.slice(0, 10) : '');
 if (!r || typeof r !== 'object') {
-  fail('review: { next, retire_when } が必須。これが無いと未使用時に畳んでよいか判断できない');
+  fail('review: { next, retire_when } is required. Without it, nobody can decide whether to retire this when it goes unused');
 } else {
   const next = asDate(r.next);
-  if (!DATE_RE.test(next)) fail('review.next: 次回棚卸し日を YYYY-MM-DD で書く');
-  else if (new Date(next) < new Date()) warn(`review.next (${next}) が過去です。棚卸しして日付を更新してください`);
+  if (!DATE_RE.test(next)) fail('review.next: next review date as YYYY-MM-DD');
+  else if (new Date(next) < new Date()) warn(`review.next (${next}) is in the past. Review this surface and move the date`);
   if (typeof r.retire_when !== 'string' || r.retire_when.trim().length < 4) {
-    fail('review.retire_when: 何が起きたら畳むかを書く。決まっていないなら「未定（YYYY-MM に再検討）」でよいが空欄は不可');
+    fail('review.retire_when: what has to happen for this to be retired. "Undecided (revisit YYYY-MM)" is fine; blank is not');
   }
 }
 
-// 同一ホストを複数リポが共有する場合、paths が無いとアクセス数を按分できない。
-// aicu.ai / api.aicu.ai / aicu.jp は複数リポで共有されている。
-const SHARED = new Set(['aicu.ai', 'aicu.jp', 'api.aicu.ai']);
-if (hosts.some((h) => SHARED.has(h)) && !(Array.isArray(m.paths) && m.paths.length)) {
-  warn('共有ホスト（aicu.ai / aicu.jp / api.aicu.ai）を宣言しているのに paths がありません。担当パスを書かないとアクセス数を他リポと按分できません');
+// When several repositories serve one host, traffic cannot be attributed without paths.
+if (hosts.some((h) => sharedHosts.has(h)) && !(Array.isArray(m.paths) && m.paths.length)) {
+  warn('This manifest declares a shared host but no paths. Without paths, traffic cannot be split between the repositories sharing it');
 }
 
-// リポジトリ自身の wrangler が配信すると言っているホストが manifest に無い＝宣言漏れ。
-// 逆向き（manifest にあって wrangler に無い）は Pages / 別経路がありうるので警告にしない。
+// A host that the repository's own wrangler config serves but the manifest omits = a forgotten update.
+// The reverse (in the manifest, not in wrangler) is normal for Pages and other routes, so no warning.
 for (const h of wranglerHosts) {
-  if (!hosts.includes(h)) warn(`wrangler が ${h} を配信すると宣言していますが hosts にありません`);
+  if (!hosts.includes(h)) warn(`wrangler serves ${h}, but it is not listed in hosts`);
 }
 
 if (m.status === 'live' && hosts.length === 0 && m.deploy !== 'none') {
-  warn('status: live なのに hosts が空です。公開面を持たないなら deploy: none にしてください');
+  warn('status is live but hosts is empty. If there is no public surface, set deploy: none');
 }
 
 for (const w of warns) console.log(`⚠ ${w}`);
 if (errors.length) {
-  console.error(`\n✗ .aicu/surface.yml に ${errors.length} 件の問題があります:\n`);
+  console.error(`\n✗ .aicu/surface.yml has ${errors.length} problem(s):\n`);
   for (const e of errors) console.error(`  - ${e}`);
-  console.error('\n書き方: https://github.com/aicuai/.github/blob/main/docs/surface-manifest.md');
+  console.error('\nHow to write it: https://github.com/aicuai/.github/blob/main/docs/surface-manifest.md');
   process.exit(1);
 }
-console.log(`✓ .aicu/surface.yml OK (entity=${m.entity} status=${m.status} hosts=${hosts.length ? hosts.join(',') : 'なし'})`);
+console.log(`✓ .aicu/surface.yml OK (entity=${m.entity} status=${m.status} hosts=${hosts.length ? hosts.join(',') : 'none'})`);
