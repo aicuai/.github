@@ -14,7 +14,7 @@
 //
 // Usage: node leak-audit.mjs [--files-from list.txt] [--llm] [--fail-on-llm]
 // Env:   LEAK_DENYLIST       newline- or comma-separated terms (case-insensitive)
-//        AICU_API_KEY        enables the LLM layer
+//        AICU_LEAK_AUDIT_API_KEY        enables the LLM layer
 //        LEAK_AUDIT_MODEL    default gpt-4o-mini
 //        LEAK_AUDIT_API_BASE default https://api.aicu.ai/v1
 //        LEAK_AUDIT_MAX_CHARS total text sent to the LLM, default 60000
@@ -98,13 +98,18 @@ Flag only content that the company would likely not want public:
 - internal inventory or business numbers (counts of internal repos/resources, costs, margins, revenue, usage of internal systems)
 - personal data of individuals other than public company contacts
 - unreleased plans, legal disputes, or customer-specific information
-Do NOT flag: public product names, public domains, public documentation, generic code, example values like example.com.
+Do NOT flag:
+- names of environment variables, secrets or settings (e.g. API_KEY, LEAK_DENYLIST); only an actual secret VALUE is a leak
+- text that describes security practices, or code that detects secrets (regex patterns, checks, prompts like this one)
+- public product names, the company's public domains and public API endpoints, public GitHub URLs
+- generic code, documentation, and placeholders such as example.com, team@example.com, <sha>
+When unsure, do not flag. A false alarm costs more trust than it saves.
 Reply with JSON only: {"findings":[{"file":"path","line":123,"category":"short-slug","severity":"high|medium|low","reason":"one sentence, do not quote secret values"}]}
 If nothing should be flagged, reply {"findings":[]}.`;
 
 async function llmReview() {
-  const key = process.env.AICU_API_KEY;
-  if (!key) return { skipped: 'AICU_API_KEY is not set' };
+  const key = process.env.AICU_LEAK_AUDIT_API_KEY;
+  if (!key) return { skipped: 'AICU_LEAK_AUDIT_API_KEY is not set' };
   const base = (process.env.LEAK_AUDIT_API_BASE || 'https://api.aicu.ai/v1').replace(/\/$/, '');
   const model = process.env.LEAK_AUDIT_MODEL || 'gpt-4o-mini';
   const budget = Number(process.env.LEAK_AUDIT_MAX_CHARS || 60000);

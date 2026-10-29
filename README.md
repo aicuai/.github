@@ -28,7 +28,7 @@ secrets, listed in its guide.
 | Workflow | Fails when | Needs | Guide |
 |---|---|---|---|
 | [surface-manifest.yml](.github/workflows/surface-manifest.yml) | The repository serves a public host but `.aicu/surface.yml` does not say who owns it or when it may be retired | nothing | [docs/surface-manifest.md](docs/surface-manifest.md) |
-| [leak-audit.yml](.github/workflows/leak-audit.yml) | A secret, an internal name, or (optionally) text an LLM judges internal is about to land in a public repository | `LEAK_DENYLIST`, `AICU_API_KEY` (both optional) | [docs/leak-audit.md](docs/leak-audit.md) |
+| [leak-audit.yml](.github/workflows/leak-audit.yml) | A secret, an internal name, or (optionally) text an LLM judges internal is about to land in a public repository | `LEAK_DENYLIST`, `AICU_LEAK_AUDIT_API_KEY` (both optional) | [docs/leak-audit.md](docs/leak-audit.md) |
 
 ### Surface manifest in one screen
 

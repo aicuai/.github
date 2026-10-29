@@ -7,7 +7,8 @@
 #
 # Secrets it reads (both optional):
 #   LEAK_DENYLIST  internal names that must never appear (one per line). Kept as a secret on purpose.
-#   AICU_API_KEY   enables the LLM review through api.aicu.ai.
+#   AICU_LEAK_AUDIT_API_KEY  enables the LLM review through api.aicu.ai. A dedicated name, so other
+#                            workflows looking for a generic API key never pick up this one.
 # Pull requests from forks get neither, so they run the secret-pattern layer only.
 #
 # Pull requests audit the changed files; pushes and manual runs audit every tracked file.
@@ -17,7 +18,7 @@ on:
   workflow_call:
     inputs:
       llm:
-        description: 'Run the LLM review when AICU_API_KEY is available'
+        description: 'Run the LLM review when AICU_LEAK_AUDIT_API_KEY is available'
         type: boolean
         default: true
       fail_on_llm:
@@ -39,7 +40,7 @@ on:
     secrets:
       LEAK_DENYLIST:
         required: false
-      AICU_API_KEY:
+      AICU_LEAK_AUDIT_API_KEY:
         required: false
 
 jobs:
@@ -79,7 +80,7 @@ jobs:
       - name: Audit
         env:
           LEAK_DENYLIST: ${{ secrets.LEAK_DENYLIST }}
-          AICU_API_KEY: ${{ inputs.llm && secrets.AICU_API_KEY || '' }}
+          AICU_LEAK_AUDIT_API_KEY: ${{ inputs.llm && secrets.AICU_LEAK_AUDIT_API_KEY || '' }}
           LEAK_AUDIT_MODEL: ${{ inputs.model }}
         run: |
           node .aicu-ci/scripts/leak-audit.mjs --files-from /tmp/leak-files.txt \

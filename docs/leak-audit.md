@@ -21,7 +21,7 @@ The job is skipped while the repository is private (`only_public: false` to run 
 |---|---|---|---|
 | Secret patterns | API keys and tokens (AICU, Stripe, GitHub, OpenAI, Anthropic, Google, AWS, Slack), webhooks, private keys, hard-coded credentials | nothing | error |
 | Denylist | Names that are internal to your organization: private repositories, internal hosts, codenames | `LEAK_DENYLIST` secret | error |
-| LLM review | What a pattern cannot see: internal inventory or business numbers, internal architecture, personal data, unreleased plans | `AICU_API_KEY` secret | warning (error with `fail_on_llm: true` for high severity) |
+| LLM review | What a pattern cannot see: internal inventory or business numbers, internal architecture, personal data, unreleased plans | `AICU_LEAK_AUDIT_API_KEY` secret | warning (error with `fail_on_llm: true` for high severity) |
 
 ### Why the denylist is a secret
 
@@ -42,6 +42,11 @@ The LLM layer sends the changed text to an OpenAI-compatible endpoint — [AICU 
 by default — and asks for exactly those categories. It reports warnings by default because a model can be
 wrong; a person decides.
 
+Measured with `gpt-4o-mini`: on a seeded file it flagged every planted disclosure (an internal admin
+hostname, counts of unused resources, internal service wiring, a margin figure, a personal phone number).
+On text that is *about* leak prevention — this repository — it raises a few false alarms, mostly on lines
+that name a category of sensitive data. That is why the default is a warning, not a failure.
+
 Only text that is about to be published is sent. Lockfiles and binaries are skipped, and the total is
 capped (`LEAK_AUDIT_MAX_CHARS`, default 60,000 characters).
 
@@ -49,7 +54,7 @@ capped (`LEAK_AUDIT_MAX_CHARS`, default 60,000 characters).
 
 | Input | Default | |
 |---|---|---|
-| `llm` | `true` | Run the LLM review when `AICU_API_KEY` is available |
+| `llm` | `true` | Run the LLM review when `AICU_LEAK_AUDIT_API_KEY` is available |
 | `fail_on_llm` | `false` | Fail on high-severity LLM findings |
 | `model` | `gpt-4o-mini` | Any chat model the endpoint serves |
 | `only_public` | `true` | Skip while the repository is private |
@@ -69,6 +74,6 @@ Add `leak-audit: allow` to the line (in a comment) to skip it in the pattern and
 
 ```bash
 git ls-files > /tmp/files.txt
-LEAK_DENYLIST="$(cat ~/denylist.txt)" AICU_API_KEY=... \
+LEAK_DENYLIST="$(cat ~/denylist.txt)" AICU_LEAK_AUDIT_API_KEY=... \
   node scripts/leak-audit.mjs --files-from /tmp/files.txt --llm
 ```
