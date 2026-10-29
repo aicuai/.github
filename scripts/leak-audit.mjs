@@ -14,7 +14,7 @@
 //
 // Usage: node leak-audit.mjs [--files-from list.txt] [--llm] [--fail-on-llm]
 // Env:   LEAK_DENYLIST       newline- or comma-separated terms (case-insensitive)
-//        AICU_API_KEY        enables the LLM layer
+//        AICU_LEAK_AUDIT_API_KEY        enables the LLM layer
 //        LEAK_AUDIT_MODEL    default gpt-4o-mini
 //        LEAK_AUDIT_API_BASE default https://api.aicu.ai/v1
 //        LEAK_AUDIT_MAX_CHARS total text sent to the LLM, default 60000
@@ -62,6 +62,11 @@ const readText = (f) => {
 
 const denylist = (process.env.LEAK_DENYLIST || '')
   .split(/[\n,]/).map((s) => s.trim()).filter((s) => s.length >= 3);
+// Match whole names only: "nimbus" fires on "org/nimbus/issues" but not inside "nimbusflow".
+// A letter or digit on either side means the term is part of a longer word.
+// A name that is also a common word ("harbor") still fires on that word; leave such names out.
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const denyRes = denylist.map((t) => new RegExp(`(?<![A-Za-z0-9])${escapeRe(t)}(?![A-Za-z0-9])`, 'i'));
 
 const findings = []; // { level: 'error'|'warning', file, line, title, message }
 const add = (f) => findings.push(f);
@@ -78,9 +83,8 @@ for (const file of files) {
     for (const [name, re] of SECRET_RULES) {
       if (re.test(line)) add({ level: 'error', file, line: i + 1, title: 'Secret', message: `Looks like a ${name}. Remove it and rotate the credential; deleting it in a later commit does not remove it from history.` });
     }
-    const lower = line.toLowerCase();
-    denylist.forEach((term, idx) => {
-      if (lower.includes(term.toLowerCase())) add({ level: 'error', file, line: i + 1, title: 'Internal name', message: `Matches denylist entry #${idx + 1}. Internal names should not appear in a public repository.` });
+    denyRes.forEach((re, idx) => {
+      if (re.test(line)) add({ level: 'error', file, line: i + 1, title: 'Internal name', message: `Matches denylist entry #${idx + 1}. Internal names should not appear in a public repository.` });
     });
   });
 }
@@ -94,13 +98,18 @@ Flag only content that the company would likely not want public:
 - internal inventory or business numbers (counts of internal repos/resources, costs, margins, revenue, usage of internal systems)
 - personal data of individuals other than public company contacts
 - unreleased plans, legal disputes, or customer-specific information
-Do NOT flag: public product names, public domains, public documentation, generic code, example values like example.com.
+Do NOT flag:
+- names of environment variables, secrets or settings (e.g. API_KEY, LEAK_DENYLIST); only an actual secret VALUE is a leak
+- text that describes security practices, or code that detects secrets (regex patterns, checks, prompts like this one)
+- public product names, the company's public domains and public API endpoints, public GitHub URLs
+- generic code, documentation, and placeholders such as example.com, team@example.com, <sha>
+When unsure, do not flag. A false alarm costs more trust than it saves.
 Reply with JSON only: {"findings":[{"file":"path","line":123,"category":"short-slug","severity":"high|medium|low","reason":"one sentence, do not quote secret values"}]}
 If nothing should be flagged, reply {"findings":[]}.`;
 
 async function llmReview() {
-  const key = process.env.AICU_API_KEY;
-  if (!key) return { skipped: 'AICU_API_KEY is not set' };
+  const key = process.env.AICU_LEAK_AUDIT_API_KEY;
+  if (!key) return { skipped: 'AICU_LEAK_AUDIT_API_KEY is not set' };
   const base = (process.env.LEAK_AUDIT_API_BASE || 'https://api.aicu.ai/v1').replace(/\/$/, '');
   const model = process.env.LEAK_AUDIT_MODEL || 'gpt-4o-mini';
   const budget = Number(process.env.LEAK_AUDIT_MAX_CHARS || 60000);
