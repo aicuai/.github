@@ -85,6 +85,10 @@ schema/              JSON Schema for .aicu/surface.yml
 scripts/             the checks themselves, runnable locally with Node 22+
 ```
 
+## Contributing
+
+Rules for changing this repository, for people and coding agents alike, are in [AGENTS.md](AGENTS.md).
+
 ## Contact
 
 - X: [@AICUai](https://x.com/AICUai)
